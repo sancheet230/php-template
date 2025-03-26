@@ -39,13 +39,13 @@ class AMQPBrokerClient implements BrokerClientContract
         FactoryContract $factory = null
     ) {
         $this->setConnection($connection);
-        if(!is_null($factory)) {
+        if (!is_null($factory)) {
             $this->setFactory($factory);
         }
     }
 
     /**
-     * @param $connection
+     * @param AMQPStreamConnection $connection
      * @return BrokerClientContract
      */
     public function setConnection($connection): BrokerClientContract
@@ -91,7 +91,7 @@ class AMQPBrokerClient implements BrokerClientContract
     }
 
     /**
-     * @return AMQPStreamConnection
+     * @return FactoryContract
      */
     public function getFactory(): FactoryContract
     {
@@ -107,111 +107,106 @@ class AMQPBrokerClient implements BrokerClientContract
     public function basicPublish(MessageContract $message, array $config = []): bool
     {
         try {
-            /**
-             * @var bool|null $mandatory
-             * @var bool|null $immediate
-             * @var $ticket
-             * @var string $exchangeName
-             * @var string $exchangeType
-             * @var string $bindingKey
-             */
-            extract($config);
+            // Explicit assignments instead of extract()
+            $exchangeName = $config['exchangeName'] ?? '';
+            $exchangeType = $config['exchangeType'] ?? '';
+            $bindingKey   = $config['bindingKey'] ?? '';
+            $passive      = $config['passive'] ?? false;
+            $durable      = $config['durable'] ?? false;
+            $autoDelete   = $config['autoDelete'] ?? true;
+            $internal     = $config['internal'] ?? false;
+            $noWait       = $config['noWait'] ?? false;
+            $arguments    = $config['arguments'] ?? [];
+            $ticket       = $config['ticket'] ?? null;
+            $mandatory    = $config['mandatory'] ?? false;
+            $immediate    = $config['immediate'] ?? false;
+
             $this->connect();
             $this->channel->exchange_declare(
                 $exchangeName,
                 $exchangeType,
-                $passive ?? false,
-                $durable ?? false,
-                $autoDelete ?? true,
-                $internal ?? false,
-                $noWait ?? false,
-                $arguments ?? [],
-                $ticket ?? null
+                $passive,
+                $durable,
+                $autoDelete,
+                $internal,
+                $noWait,
+                $arguments,
+                $ticket
             );
-            /** @var \PhpAmqpLib\Message\AMQPMessage $amqpMessage */
+            /** @var AMQPMessage $amqpMessage */
             $amqpMessage = $message->getPayload();
             $this->channel->basic_publish(
                 $amqpMessage,
-                $exchangeName ?? '',
-                $bindingKey ?? '',
-                $mandatory ?? false,
-                $immediate ?? false,
-                $ticket ?? null
+                $exchangeName,
+                $bindingKey,
+                $mandatory,
+                $immediate,
+                $ticket
             );
             $this->close();
             return true;
         } catch (\Throwable $t) {
-            //log here?
+            // Log the error if needed
             return false;
         }
     }
 
     /**
      * Basic consume function will default to topic through exchange with binding keys.
-     * If other types of consumption are needed, refactor is needed.
-     * Refactoring this functions is easy tho, please follow TDD best practices in order to do so
      *
      * @param HandlerContract $handler
      * @param array $config
      * @return bool
      * @throws ErrorException
      */
-    public function basicConsume(
-        HandlerContract $handler,
-        array $config = []
-    ): bool
+    public function basicConsume(HandlerContract $handler, array $config = []): bool
     {
         try {
-            /**
-             * @var string|null $publisherTag
-             * @var bool|null $noLocal
-             * @var bool|null $noAck
-             * @var bool|null $exclusive
-             * @var bool|null $noWait
-             * @var $callback
-             * @var $ticket
-             * @var array|null $arguments
-             * @var string $exchangeName
-             * @var string $exchangeType
-             * @var string $bindingKey
-             * @var bool $exchangeDurable
-             * @var bool $queueDurable
-             * @var bool $autoDelete
-             */
-            extract($config);
+            // Explicit assignments instead of extract()
+            $exchangeName    = $config['exchangeName'] ?? '';
+            $exchangeType    = $config['exchangeType'] ?? '';
+            $bindingKey      = $config['bindingKey'] ?? '';
+            $exchangeDurable = $config['exchangeDurable'] ?? false;
+            $queueDurable    = $config['queueDurable'] ?? false;
+            $autoDelete      = $config['autoDelete'] ?? true;
+            $noWait          = $config['noWait'] ?? false;
+            $arguments       = $config['arguments'] ?? [];
+            $ticket          = $config['ticket'] ?? null;
+            $publisherTag    = $config['publisherTag'] ?? '';
+            $noLocal         = $config['noLocal'] ?? false;
+            $noAck           = $config['noAck'] ?? false;
+            $exclusive       = $config['exclusive'] ?? false;
+
             $this->connect();
             $this->channel->exchange_declare(
                 $exchangeName,
                 $exchangeType,
                 false,
-                $exchangeDurable ?? false,
-                $autoDelete ?? true,
+                $exchangeDurable,
+                $autoDelete,
                 false,
-                $noWait ?? false,
-                $arguments ?? [],
-                $ticket ?? null
+                $noWait,
+                $arguments,
+                $ticket
             );
             list($queueName) = $this->channel->queue_declare(
                 "",
                 false,
-                $queueDurable ?? false,
-                $autoDelete ?? true,
+                $queueDurable,
+                $autoDelete,
                 false
             );
             $this->channel->queue_bind($queueName, $exchangeName, $bindingKey);
             $this->channel->basic_consume(
                 $queueName,
-                $publisherTag ?? '',
-                $noLocal ?? false,
-                $noAck ?? false,
-                $exclusive ?? false,
-                $noWait ?? false,
-                [
-                    $handler,
-                    'handle'
-                ],
-                $ticket ?? null,
-                $arguments ?? []
+                $publisherTag,
+                $noLocal,
+                $noAck,
+                $exclusive,
+                $noWait,
+                [$handler, 'handle'],
+                $ticket,
+                $arguments
             );
 
             while ($this->channel->is_consuming()) {
@@ -222,7 +217,7 @@ class AMQPBrokerClient implements BrokerClientContract
 
             return true;
         } catch (\Throwable $t) {
-            //log here
+            // Log error if needed
             return false;
         }
     }
@@ -233,15 +228,11 @@ class AMQPBrokerClient implements BrokerClientContract
      * @return AMQPMessage
      * @throws ErrorException
      */
-    public function rpcPublish(
-        MessageContract $message,
-        array $config = []
-    ): AMQPMessage
+    public function rpcPublish(MessageContract $message, array $config = []): AMQPMessage
     {
-        /**
-         * @var $bindingKey
-         */
-        extract($config);
+        // Explicit assignment instead of extract()
+        $bindingKey = $config['bindingKey'] ?? '';
+
         $this->connect();
         /** @var AMQPRPCClientHandler $rpcClientHandler */
         $rpcClientHandler = $this->getFactory()->createHandler(AMQPRPCClientHandler::class);
@@ -257,7 +248,7 @@ class AMQPBrokerClient implements BrokerClientContract
         /** @var AMQPMessage $amqpMessage */
         $amqpMessage = $message->getPayload();
         $amqpMessage->set('reply_to', $queue);
-        if(!$amqpMessage->has('correlation_id')) {
+        if (!$amqpMessage->has('correlation_id')) {
             $correlationId = Uuid::uuid4()->toString();
             $amqpMessage->set('correlation_id', $correlationId);
         }
@@ -270,10 +261,7 @@ class AMQPBrokerClient implements BrokerClientContract
             true,
             false,
             false,
-            [
-                $rpcClientHandler,
-                'handle'
-            ]
+            [$rpcClientHandler, 'handle']
         );
 
         $this->channel->basic_publish($amqpMessage, '', $bindingKey);
@@ -292,16 +280,12 @@ class AMQPBrokerClient implements BrokerClientContract
      * @param array $config
      * @return bool
      */
-    public function rpcConsume(
-        AMQPRPCServerHandler $handler,
-        array $config = []
-    ): bool
+    public function rpcConsume(AMQPRPCServerHandler $handler, array $config = []): bool
     {
         try {
-            /**
-             * @var $queueName
-             */
-            extract($config);
+            // Explicit assignment instead of extract()
+            $queueName = $config['queueName'] ?? '';
+
             $this->connect();
             $this->channel->queue_declare(
                 $queueName,
@@ -319,10 +303,7 @@ class AMQPBrokerClient implements BrokerClientContract
                 false,
                 false,
                 false,
-                [
-                    $handler,
-                    'handle'
-                ]
+                [$handler, 'handle']
             );
 
             while ($this->channel->is_consuming()) {
@@ -332,8 +313,8 @@ class AMQPBrokerClient implements BrokerClientContract
             $this->close();
 
             return true;
-        }catch(\Throwable $t) {
-            //log the exception
+        } catch (\Throwable $t) {
+            // Log error if needed
             return false;
         }
     }
